@@ -9,31 +9,42 @@ const path = require("path");
 exports.handleUpload = async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
+
   const filepath = path.join(__dirname, "..", req.file.path);
   console.log("[DEBUG] Filepath:", filepath);
-  const videoIds = await parseCSV(filepath);
-  console.log("[DEBUG] Parsed videoIds:", videoIds);
+  const videoRows = await parseCSV(filepath); // [{ videoId, visitedAt }]
+  console.log("[DEBUG] Parsed videoRows:", videoRows);
 
-  const uniqueIds = [...new Set(videoIds)];
-  console.log("[DEBUG] Unique videoIds:", uniqueIds);
+  // Remove duplicates by videoId, keep the first occurrence (with visitedAt)
+  const seen = new Set();
+  const uniqueRows = videoRows.filter(row => {
+    if (seen.has(row.videoId)) return false;
+    seen.add(row.videoId);
+    return true;
+  });
+  console.log("[DEBUG] Unique video rows:", uniqueRows);
   const results = [];
 
   console.log("File received:", req.file.originalname);
 
-  for (const id of uniqueIds) {
-    const exists = await Video.findOne({ videoId: id });
+  for (const { videoId, visitedAt } of uniqueRows) {
+    const exists = await Video.findOne({ videoId });
     if (exists) {
-      console.log(`[DEBUG] Video ID ${id} already exists in DB.`);
+      console.log(`[DEBUG] Video ID ${videoId} already exists in DB.`);
       continue;
     }
 
-    const data = await fetchMetadata(id);
-    console.log(`[DEBUG] Metadata for ${id}:`, data);
+    const data = await fetchMetadata(videoId);
+    console.log(`[DEBUG] Metadata for ${videoId}:`, data);
     if (data) {
-      const saved = await Video.create(data);
+      if (!data.duration) {
+        console.warn(`[WARN] No duration for videoId ${videoId}. This video will not contribute to watch time stats.`);
+      }
+      // Add visitedAt to the data before saving
+      const saved = await Video.create({ ...data, visitedAt });
       results.push(saved);
     } else {
-      console.log(`[DEBUG] No metadata found for ${id}.`);
+      console.log(`[DEBUG] No metadata found for ${videoId}.`);
     }
   }
 

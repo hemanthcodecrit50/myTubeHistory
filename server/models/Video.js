@@ -7,6 +7,7 @@ const videoSchema = new mongoose.Schema({
   categoryId: String,
   publishedAt: Date,
   duration: String,
+  visitedAt: Date, // <-- add this line
 });
 
 module.exports = mongoose.model("Video", videoSchema);
